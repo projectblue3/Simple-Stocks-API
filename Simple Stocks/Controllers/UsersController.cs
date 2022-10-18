@@ -1,13 +1,18 @@
 ﻿using AutoMapper;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
+using Simple_Stocks.Dtos;
 using Simple_Stocks.Dtos.ModDtos;
 using Simple_Stocks.Dtos.PrivacyDtos;
 using Simple_Stocks.Dtos.UserUpdateDtos;
+using Simple_Stocks.Migrations;
 using Simple_Stocks.Models;
 using Simple_Stocks.Services;
 using System.Collections.Generic;
+using System.Runtime.Intrinsics.Arm;
+using System.Security.Cryptography;
 
 namespace Simple_Stocks.Controllers
 {
@@ -296,8 +301,8 @@ namespace Simple_Stocks.Controllers
         }
 
         //Post req to create a user
-        [HttpPost]
-        public async Task<IActionResult> CreateUserAccount(User userPassedIn)
+        [HttpPost("register")]
+        public async Task<IActionResult> CreateUserAccount(RegisterDto userPassedIn)
         {
             var userRole = await _roleRepo.GetRoleById(userPassedIn.RoleId);
 
@@ -313,22 +318,27 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(400, new { messages = new List<string>() { $"{dup} is in use." } });
             }
 
+            CreatePasswordHash(userPassedIn.Password, out byte[] passwordHash, out byte[] passwordSalt);
+
             User userToCreate = new User()
             {
                 AvatarLink = "test/test.png",
+                BannerLink = "test/test.png",
                 FirstName = userPassedIn.FirstName,
                 LastName = userPassedIn.LastName,
                 Username = userPassedIn.Username,
-                Password = userPassedIn.Password,
+                //Password = userPassedIn.Password,
+                PasswordHash = passwordHash,
+                PasswordSalt = passwordSalt,
                 Email = userPassedIn.Email,
                 DateOfBirth = userPassedIn.DateOfBirth,
                 PhoneNumber = userPassedIn.PhoneNumber,
                 Bio = userPassedIn.Bio,
-                AccountIsEnabled = userPassedIn.AccountIsEnabled,
-                AccountIsHidden = userPassedIn.AccountIsHidden,
-                AccountIsPrivate = userPassedIn.AccountIsPrivate,
-                LikesArePrivate = userPassedIn.LikesArePrivate,
-                FollowsArePrivate = userPassedIn.FollowsArePrivate,
+                AccountIsEnabled = true,
+                AccountIsHidden = false,
+                AccountIsPrivate = false,
+                LikesArePrivate = false,
+                FollowsArePrivate = false,
                 RoleId = userPassedIn.RoleId,
                 CreatedAt = DateTimeOffset.Now
             };
@@ -347,6 +357,27 @@ namespace Simple_Stocks.Controllers
 
             return Ok();
             //return CreatedAtRoute(nameof(GetUserById), new { userId = userToCreate.Id }, userToCreate);
+        }
+
+        //Post req to allow a user to login
+        [HttpPost("login")]
+        public async Task<IActionResult> Login(LoginDto login)
+        {
+            User user = await _userRepo.GetUserByUsername(login.Username);
+
+            if(user == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { $"Username or password is incorrect" } });
+            }
+
+            if (!VerifyPasswordHash(login.Password, user.PasswordHash, user.PasswordSalt))
+            {
+                return StatusCode(400, new { messages = new List<string>() { $"Username or password is incorrect" } });
+            }
+
+            //create token here
+
+            return Ok("Some Token");
         }
 
         //Delete req to delete a user
@@ -485,6 +516,26 @@ namespace Simple_Stocks.Controllers
             await _userRepo.UpdateUserAsync(userInDb);
 
             return NoContent();
+        }
+
+        //Salt and hashes passwords for the database
+        private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
+        {
+            using (var hmac = new HMACSHA512())
+            {
+                passwordSalt = hmac.Key;
+                passwordHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
+            }
+        }
+
+        //Returns true of false based of the validity of the password entered
+        private bool VerifyPasswordHash(string password, byte[] passwordHash, byte[] passwordSalt)
+        {
+            using (var hmac = new HMACSHA512(passwordSalt))
+            {
+                var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
+                return computedHash.SequenceEqual(passwordHash);
+            }
         }
 
         //add blocked users to get req
