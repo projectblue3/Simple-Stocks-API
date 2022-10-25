@@ -21,8 +21,9 @@ namespace Simple_Stocks.Controllers
         private readonly ILikedPostRepo _likedPostRepo;
         private readonly ITagRepo _tagRepo;
         private readonly IPostTagRepo _postTagRepo;
+        private readonly IRefreshTokenRepo _refreshTokenRepo;
 
-        public PostsController(IMapper mapper, IPostRepo postRepo, IUserRepo userRepo, ICommentRepo commentRepo, ITagRepo tagRepo, IPostTagRepo postTagRepo, ILikedPostRepo likedPostRepo)
+        public PostsController(IMapper mapper, IPostRepo postRepo, IUserRepo userRepo, ICommentRepo commentRepo, ITagRepo tagRepo, IPostTagRepo postTagRepo, ILikedPostRepo likedPostRepo, IRefreshTokenRepo refreshTokenRepo)
         {
             _mapper = mapper;
             _postRepo = postRepo;
@@ -31,6 +32,7 @@ namespace Simple_Stocks.Controllers
             _tagRepo = tagRepo;
             _postTagRepo = postTagRepo;
             _likedPostRepo = likedPostRepo;
+            _refreshTokenRepo = refreshTokenRepo;   
         }
 
 
@@ -172,7 +174,8 @@ namespace Simple_Stocks.Controllers
         [HttpPost]
         public async Task<IActionResult> CreatePost([FromQuery] List<int> tagId, [FromBody] Post postPassedIn)
         {
-            var userFound = await _userRepo.GetUserById(postPassedIn.UserID);
+            var tokenUser = _refreshTokenRepo.ReadToken();
+            var userFound = await _userRepo.GetUserByUsername(tokenUser);
 
             if (postPassedIn == null)
             {
@@ -214,7 +217,7 @@ namespace Simple_Stocks.Controllers
                 Text = postPassedIn.Text,
                 PostIsHidden = false,
                 PostIsPrivate = postPassedIn.PostIsPrivate,
-                UserID = postPassedIn.UserID,
+                UserID = userFound.Id,
                 CreatedAt = DateTimeOffset.Now
             };
 
@@ -314,7 +317,7 @@ namespace Simple_Stocks.Controllers
 
             if (postTag == null)
             {
-                return StatusCode(404, new { messages = new List<string>() { "Error adding tag" } });
+                return StatusCode(400, new { messages = new List<string>() { "Error adding tag" } });
             }
 
             await _postTagRepo.AddPostTag(postTag);

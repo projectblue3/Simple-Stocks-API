@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
 using Simple_Stocks.Services;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +26,19 @@ builder.Services.AddMvc()
                             new CamelCasePropertyNamesContractResolver();
                     });
 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8
+                .GetBytes(builder.Configuration.GetSection("JWT:Secret").Value)),
+            ValidateIssuer = false,
+            ValidateAudience = false
+        };
+    });
+
 builder.Services.AddScoped<IUserRepo, UserRepo>();
 builder.Services.AddScoped<IRightRepo, RightRepo>();
 builder.Services.AddScoped<IRoleRepo, RoleRepo>();
@@ -36,7 +52,9 @@ builder.Services.AddScoped<ICommentRepo, CommentRepo>();
 builder.Services.AddScoped<IUserBlockRepo, UserBlockRepo>();
 builder.Services.AddScoped<IUserFollowRepo, UserFollowRepo>();
 builder.Services.AddScoped<ILikedPostRepo, LikedPostRepo>();
+builder.Services.AddScoped<IRefreshTokenRepo, RefreshTokenRepo>();
 
+builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
@@ -45,6 +63,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
 
 app.UseAuthorization();
 

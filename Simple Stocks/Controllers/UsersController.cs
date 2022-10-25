@@ -1,8 +1,10 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using Simple_Stocks.Dtos;
 using Simple_Stocks.Dtos.ModDtos;
 using Simple_Stocks.Dtos.PrivacyDtos;
@@ -11,28 +13,38 @@ using Simple_Stocks.Migrations;
 using Simple_Stocks.Models;
 using Simple_Stocks.Services;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Runtime.Intrinsics.Arm;
+using System.Security.Claims;
 using System.Security.Cryptography;
 
 namespace Simple_Stocks.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]"), Authorize]
     [ApiController]
     public class UsersController : ControllerBase
     {
         private readonly IUserRepo _userRepo;
         private readonly IRoleRepo _roleRepo;
+        private readonly IUserFollowRepo _userFollowRepo;
+        private readonly IUserBlockRepo _userBlockRepo;
+        private readonly IRefreshTokenRepo _refreshTokenRepo;
         private readonly IMapper _mapper;
+        private readonly IConfiguration _configuration;
 
-        public UsersController(IUserRepo userRepo, IRoleRepo roleRepo, IMapper mapper)
+        public UsersController(IUserRepo userRepo, IRoleRepo roleRepo, IMapper mapper, IConfiguration configuration, IRefreshTokenRepo refreshTokenRepo, IUserFollowRepo userFollowRepo, IUserBlockRepo userBlockRepo)
         {
             _userRepo = userRepo;
             _roleRepo = roleRepo;
             _mapper = mapper;
+            _configuration = configuration;
+            _refreshTokenRepo = refreshTokenRepo;
+            _userFollowRepo = userFollowRepo;
+            _userBlockRepo = userBlockRepo;
         }
 
         //Get req where any admin can get all users
-        [HttpGet]
+        [HttpGet, Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetUsers()
         {
             ICollection<User> foundUsers = new List<User>();
@@ -62,8 +74,29 @@ namespace Simple_Stocks.Controllers
                 return Ok(noItems);
             }
 
+            ICollection<GetUserDto> userDtos = new List<GetUserDto>();
+
+            foreach (var user in foundUsers)
+            {
+                userDtos.Add(new GetUserDto
+                {
+                    Id = user.Id,
+                    AvatarLink = user.AvatarLink,
+                    BannerLink = user.BannerLink,
+                    Username = user.Username,
+                    Bio = user.Bio,
+                    AccountIsEnabled = user.AccountIsEnabled,
+                    AccountIsHidden = user.AccountIsHidden,
+                    AccountIsPrivate = user.AccountIsPrivate,
+                    LikesArePrivate = user.LikesArePrivate,
+                    FollowsArePrivate = user.FollowsArePrivate,
+                    RoleId = user.RoleId,
+                    CreatedAt = user.CreatedAt
+                });
+            }
+
             //return Ok(foundUsers.OrderBy(u => u.Followers.Count).ToList());
-            return Ok(foundUsers);
+            return Ok(userDtos);
         }
 
         //Get req to access a user profile
@@ -77,7 +110,23 @@ namespace Simple_Stocks.Controllers
                 return NotFound();
             }
 
-            return Ok(desiredUser);
+            var userDto = new GetUserDto()
+            {
+                Id = desiredUser.Id,
+                AvatarLink = desiredUser.AvatarLink,
+                BannerLink = desiredUser.BannerLink,
+                Username = desiredUser.Username,
+                Bio = desiredUser.Bio,
+                AccountIsEnabled = desiredUser.AccountIsEnabled,
+                AccountIsHidden = desiredUser.AccountIsHidden,
+                AccountIsPrivate = desiredUser.AccountIsPrivate,
+                LikesArePrivate = desiredUser.LikesArePrivate,
+                FollowsArePrivate = desiredUser.FollowsArePrivate,
+                RoleId = desiredUser.RoleId,
+                CreatedAt = desiredUser.CreatedAt
+            };
+
+            return Ok(userDto);
         }
 
         //Get req to access a user profile by Id
@@ -86,9 +135,16 @@ namespace Simple_Stocks.Controllers
         {
             var desiredUser = await _userRepo.GetUserById(id);
 
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
             if (desiredUser == null)
             {
                 return NotFound();
+            }
+
+            if(desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
             }
 
             return Ok(desiredUser);
@@ -166,12 +222,19 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> GetOwnPosts(int id)
         {
             var desiredUser = await _userRepo.GetUserById(id);
-            ICollection<Post> userPosts = await _userRepo.GetPersonalPosts(desiredUser.Id);
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
             if (desiredUser == null)
             {
                 return NotFound();
             }
+
+            if (desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            ICollection<Post> userPosts = await _userRepo.GetPersonalPosts(desiredUser.Id);
 
             if (userPosts == null)
             {
@@ -186,12 +249,19 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> GetOwnComments(int id)
         {
             var desiredUser = await _userRepo.GetUserById(id);
-            ICollection<Comment> userComments = await _userRepo.GetAllComments(desiredUser.Id);
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
             if (desiredUser == null)
             {
                 return NotFound();
             }
+
+            if (desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            ICollection<Comment> userComments = await _userRepo.GetAllComments(desiredUser.Id);
 
             if (userComments == null)
             {
@@ -218,7 +288,28 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(404, new { messages = new List<string>() { "Followers not found." } });
             }
 
-            return Ok(followers);
+            ICollection<GetUserDto> userDtos = new List<GetUserDto>();
+
+            foreach (var user in followers)
+            {
+                userDtos.Add(new GetUserDto
+                {
+                    Id = user.Id,
+                    AvatarLink = user.AvatarLink,
+                    BannerLink = user.BannerLink,
+                    Username = user.Username,
+                    Bio = user.Bio,
+                    AccountIsEnabled = user.AccountIsEnabled,
+                    AccountIsHidden = user.AccountIsHidden,
+                    AccountIsPrivate = user.AccountIsPrivate,
+                    LikesArePrivate = user.LikesArePrivate,
+                    FollowsArePrivate = user.FollowsArePrivate,
+                    RoleId = user.RoleId,
+                    CreatedAt = user.CreatedAt
+                });
+            }
+
+            return Ok(userDtos);
         }
         //GET req for users you followed
         [HttpGet("i/{id}/following")]
@@ -237,7 +328,28 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(404, new { messages = new List<string>() { "Followed users not found." } });
             }
 
-            return Ok(followed);
+            ICollection<GetUserDto> userDtos = new List<GetUserDto>();
+
+            foreach (var user in followed)
+            {
+                userDtos.Add(new GetUserDto
+                {
+                    Id = user.Id,
+                    AvatarLink = user.AvatarLink,
+                    BannerLink = user.BannerLink,
+                    Username = user.Username,
+                    Bio = user.Bio,
+                    AccountIsEnabled = user.AccountIsEnabled,
+                    AccountIsHidden = user.AccountIsHidden,
+                    AccountIsPrivate = user.AccountIsPrivate,
+                    LikesArePrivate = user.LikesArePrivate,
+                    FollowsArePrivate = user.FollowsArePrivate,
+                    RoleId = user.RoleId,
+                    CreatedAt = user.CreatedAt
+                });
+            }
+
+            return Ok(userDtos);
         }
 
         //GET req for blocked users
@@ -245,19 +357,47 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> GetBlocked(int id)
         {
             var desiredUser = await _userRepo.GetUserById(id);
-            ICollection<User> blocked = await _userRepo.GetAllBlockedUsers(desiredUser.Id);
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
             if (desiredUser == null)
             {
                 return NotFound();
             }
 
+            if (desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            ICollection<User> blocked = await _userRepo.GetAllBlockedUsers(desiredUser.Id);
+
             if (blocked == null)
             {
                 return StatusCode(404, new { messages = new List<string>() { "Blocked users not found." } });
             }
 
-            return Ok(blocked);
+            ICollection<GetUserDto> userDtos = new List<GetUserDto>();
+
+            foreach (var user in blocked)
+            {
+                userDtos.Add(new GetUserDto
+                {
+                    Id = user.Id,
+                    AvatarLink = user.AvatarLink,
+                    BannerLink = user.BannerLink,
+                    Username = user.Username,
+                    Bio = user.Bio,
+                    AccountIsEnabled = user.AccountIsEnabled,
+                    AccountIsHidden = user.AccountIsHidden,
+                    AccountIsPrivate = user.AccountIsPrivate,
+                    LikesArePrivate = user.LikesArePrivate,
+                    FollowsArePrivate = user.FollowsArePrivate,
+                    RoleId = user.RoleId,
+                    CreatedAt = user.CreatedAt
+                });
+            }
+
+            return Ok(userDtos);
         }
 
         //GET req for liked posts
@@ -265,12 +405,19 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> GetLikes(int id)
         {
             var desiredUser = await _userRepo.GetUserById(id);
-            ICollection<Post> likedPosts = await _userRepo.GetAllLikedPosts(desiredUser.Id);
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
             if (desiredUser == null)
             {
                 return NotFound();
             }
+
+            if (desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            ICollection<Post> likedPosts = await _userRepo.GetAllLikedPosts(desiredUser.Id);
 
             if (likedPosts == null)
             {
@@ -285,12 +432,19 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> GetLikedComments(int id)
         {
             var desiredUser = await _userRepo.GetUserById(id);
-            ICollection<Comment> likedComments = await _userRepo.GetLikedComments(desiredUser.Id);
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
             if (desiredUser == null)
             {
                 return NotFound();
             }
+
+            if (desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            ICollection<Comment> likedComments = await _userRepo.GetLikedComments(desiredUser.Id);
 
             if (likedComments == null)
             {
@@ -301,7 +455,7 @@ namespace Simple_Stocks.Controllers
         }
 
         //Post req to create a user
-        [HttpPost("register")]
+        [HttpPost("register"), AllowAnonymous]
         public async Task<IActionResult> CreateUserAccount(RegisterDto userPassedIn)
         {
             var userRole = await _roleRepo.GetRoleById(userPassedIn.RoleId);
@@ -360,7 +514,7 @@ namespace Simple_Stocks.Controllers
         }
 
         //Post req to allow a user to login
-        [HttpPost("login")]
+        [HttpPost("login"), AllowAnonymous]
         public async Task<IActionResult> Login(LoginDto login)
         {
             User user = await _userRepo.GetUserByUsername(login.Username);
@@ -375,13 +529,208 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(400, new { messages = new List<string>() { $"Username or password is incorrect" } });
             }
 
-            //create token here
+            Role role = await _roleRepo.GetRoleById(user.RoleId);
 
-            return Ok("Some Token");
+            var jwt = CreateJWT(user.Username, role.Title, "token");
+            var rjwt = CreateJWT(user.Username, role.Title, "refreshToken");
+
+            //check if refresh token exists already
+
+            //RefreshToken refreshToken = new RefreshToken()
+            //{
+            //    Token = rjwt,
+            //    CreatedAt = DateTimeOffset.Now,
+            //    ExpiresAt = DateTimeOffset.Now.AddDays(7),
+            //    UserID = user.Id
+            //};
+
+            //await _refreshTokenRepo.AddToken(refreshToken);
+
+            return StatusCode(200, new { token = jwt, refreshToken = rjwt });
         }
 
+        //Post req to follow another user
+        [HttpPost("u/{userToFollow}/follow")]
+        public async Task<IActionResult> FollowUser(string userToFollow)
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            if (tokenUser == null)
+            {
+                return NotFound();
+            }
+
+            var userFollowing = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (userFollowing == null)
+            {
+                return NotFound();
+            }
+
+            var userFollowed = await _userRepo.GetUserByUsername(userToFollow);
+
+            if (userFollowed == null)
+            {
+                return NotFound();
+            }
+
+            var userFollow = new UserFollow
+            {
+                SourceUserId = userFollowing.Id,
+                FollowedUserId = userFollowed.Id,
+            };
+
+            if (userFollow == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { "Error Following" } });
+            }
+
+            await _userFollowRepo.FollowUser(userFollow);
+
+            return Ok();
+        }
+
+        //Post req to block another user
+        [HttpPost("u/{userToBlock}/block")]
+        public async Task<IActionResult> BlockUser(string userToBlock)
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            if (tokenUser == null)
+            {
+                return NotFound();
+            }
+
+            var userBlocking = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (userBlocking == null)
+            {
+                return NotFound();
+            }
+
+            var userBlocked = await _userRepo.GetUserByUsername(userToBlock);
+
+            if (userBlocked == null)
+            {
+                return NotFound();
+            }
+
+            var userBlock = new UserBlock
+            {
+                SourceUserId = userBlocking.Id,
+                BlockedUserId = userBlocked.Id,
+            };
+
+            if (userBlock == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { "Error Blocking User" } });
+            }
+
+            await _userBlockRepo.BlockUser(userBlock);
+
+            return Ok();
+        }
+
+        //Delete req to unfollow a user
+        [HttpDelete("u/{userToUnFollow}/unfollow")]
+        public async Task<IActionResult> UnFollowUser(string userToUnFollow)
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            if (tokenUser == null)
+            {
+                return NotFound();
+            }
+
+            var userFollowing = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (userFollowing == null)
+            {
+                return NotFound();
+            }
+
+            var userUnFollowed = await _userRepo.GetUserByUsername(userToUnFollow);
+
+            if (userUnFollowed == null)
+            {
+                return NotFound();
+            }
+
+            var userUnFollow = await _userFollowRepo.SearchForFollowedUser(userFollowing.Id, userUnFollowed.Id);
+
+            if (userUnFollow == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { "Error Following" } });
+            }
+
+            await _userFollowRepo.DeleteUserFollow(userUnFollow);
+
+            return Ok();
+        }
+
+        //Delete req to unblock a user
+        [HttpDelete("u/{userToUnBlock}/unblock")]
+        public async Task<IActionResult> UnBlockUser(string userToUnBlock)
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            if (tokenUser == null)
+            {
+                return NotFound();
+            }
+
+            var userUnBlocking = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (userUnBlocking == null)
+            {
+                return NotFound();
+            }
+
+            var userUnBlocked = await _userRepo.GetUserByUsername(userToUnBlock);
+
+            if (userUnBlocked == null)
+            {
+                return NotFound();
+            }
+
+            var userUnBlock = await _userBlockRepo.SearchForBlockedUser(userUnBlocking.Id, userUnBlocked.Id);
+
+            if (userUnBlock == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { "Error Unblocking" } });
+            }
+
+            await _userBlockRepo.DeleteUserBlock(userUnBlock);
+
+            return Ok();
+        }
+
+        //Delete req to logout
+        [HttpDelete("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            if (tokenUser == null)
+            {
+                return NotFound();
+            }
+
+            var user = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            //remove refresh token from db
+
+            return NoContent();
+        }
+
+
         //Delete req to delete a user
-        [HttpDelete("i/{id}")]
+        [HttpDelete("i/{id}"), Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteUserById(int id)
         {
             var desiredUser = await _userRepo.GetUserById(id);
@@ -401,11 +750,16 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> UpdateUserProfile(int id, [FromBody]JsonPatchDocument<ProfileUpdateDto> patchPassedIn)
         {
             var userInDb = await _userRepo.GetUserById(id);
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
-
-            if(userInDb == null)
+            if (userInDb == null)
             {
                 return NotFound();
+            }
+
+            if (userInDb.Username != tokenUser)
+            {
+                return StatusCode(403);
             }
 
             var updatedUser = _mapper.Map<ProfileUpdateDto>(userInDb);
@@ -436,11 +790,16 @@ namespace Simple_Stocks.Controllers
         public async Task<IActionResult> UpdateUserPrivacy(int id, [FromBody] JsonPatchDocument<UserPrivacyDto> patchPassedIn)
         {
             var userInDb = await _userRepo.GetUserById(id);
-
+            var tokenUser = _refreshTokenRepo.ReadToken();
 
             if (userInDb == null)
             {
                 return NotFound();
+            }
+
+            if (userInDb.Username != tokenUser)
+            {
+                return StatusCode(403);
             }
 
             var updatedUser = _mapper.Map<UserPrivacyDto>(userInDb);
@@ -460,7 +819,7 @@ namespace Simple_Stocks.Controllers
         }
 
         //Put req to update a user's role
-        [HttpPut("i/{id}/changerole")]
+        [HttpPut("i/{id}/changerole"), Authorize(Roles = "Admin")]
         public async Task<IActionResult> ChangeUserRole(int id, [FromQuery] int newRoleId)
         {
             
@@ -491,7 +850,7 @@ namespace Simple_Stocks.Controllers
         }
 
         //Patch req to hide user
-        [HttpPatch("i/{id}/hideuser")]
+        [HttpPatch("i/{id}/hideuser"), Authorize(Roles = "Mod,Admin")]
         public async Task<IActionResult> HideUser(int id, [FromBody] JsonPatchDocument<UserVisabilityDto> patchPassedIn)
         {
             var userInDb = await _userRepo.GetUserById(id);
@@ -518,6 +877,8 @@ namespace Simple_Stocks.Controllers
             return NoContent();
         }
 
+        //make these async and maybe move to another file
+
         //Salt and hashes passwords for the database
         private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
         {
@@ -536,6 +897,39 @@ namespace Simple_Stocks.Controllers
                 var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
                 return computedHash.SequenceEqual(passwordHash);
             }
+        }
+
+        //Creates a JWT
+        private string CreateJWT(string username, string role, string type)
+        {
+            var timeLength = DateTime.Now.AddMinutes(15);
+
+            if(type == "refresh")
+            {
+                timeLength = DateTime.Now.AddDays(7);
+            }
+
+            List<Claim> claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, username),
+                new Claim(ClaimTypes.Role, role),
+            };
+
+            var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(
+                _configuration.GetSection("JWT:Secret").Value)
+                );
+
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+
+            var token = new JwtSecurityToken(
+                claims: claims,
+                expires: timeLength,
+                signingCredentials: creds
+                );
+
+            var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return jwt;
         }
 
         //add blocked users to get req

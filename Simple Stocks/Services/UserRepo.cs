@@ -91,7 +91,7 @@ namespace Simple_Stocks.Services
 
         public async Task<User> GetUserById(int userId)
         {
-            return await _dbContext.Set<User>().Where(u => u.Id == userId).AsNoTracking().FirstOrDefaultAsync();
+            return await _dbContext.Set<User>().Where(u => u.Id == userId).Include(u => u.RefreshToken).AsNoTracking().FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByPhone(string phone)
