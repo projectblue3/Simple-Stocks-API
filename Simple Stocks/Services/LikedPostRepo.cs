@@ -12,6 +12,12 @@ namespace Simple_Stocks.Services
             _dbContext = dbContext;
         }
 
+        public async Task LikePost(LikedPost likedPost)
+        {
+            await _dbContext.Set<LikedPost>().AddAsync(likedPost);
+            await SaveChanges();
+        }
+
         public async Task UpdateLikedPost(LikedPost likedPost)
         {
             _dbContext.Set<LikedPost>().Update(likedPost);
@@ -48,5 +54,7 @@ namespace Simple_Stocks.Services
         {
             await _dbContext.SaveChangesAsync();
         }
+
+        
     }
 }

@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
@@ -7,10 +8,11 @@ using Simple_Stocks.Dtos.ModDtos;
 using Simple_Stocks.Dtos.PrivacyDtos;
 using Simple_Stocks.Models;
 using Simple_Stocks.Services;
+using System.Data;
 
 namespace Simple_Stocks.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]"), Authorize]
     [ApiController]
     public class PostsController : ControllerBase
     {
@@ -37,7 +39,7 @@ namespace Simple_Stocks.Controllers
 
 
         //Get req to get all posts for mods
-        [HttpGet("modview")]
+        [HttpGet("modview"), Authorize(Roles = "Mod,Admin")]
         public async Task<IActionResult> ModsGetPosts()
         {
             ICollection<Post> foundPosts = new List<Post>();
@@ -57,6 +59,7 @@ namespace Simple_Stocks.Controllers
 
         //Get req to get all posts for users
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetPosts()
         {
             ICollection<Post> foundPosts = new List<Post>();
@@ -68,8 +71,6 @@ namespace Simple_Stocks.Controllers
                 List<string> noItems = new List<string>();
                 return Ok(noItems);
             }
-
-
 
             return Ok(foundPosts.OrderBy(p => p.CreatedAt).ToList());
         }
@@ -167,7 +168,28 @@ namespace Simple_Stocks.Controllers
                 return Ok(noItems);
             }
 
-            return Ok(likes);
+            ICollection<GetUserDto> userDtos = new List<GetUserDto>();
+
+            foreach (var user in likes)
+            {
+                userDtos.Add(new GetUserDto
+                {
+                    Id = user.Id,
+                    AvatarLink = user.AvatarLink,
+                    BannerLink = user.BannerLink,
+                    Username = user.Username,
+                    Bio = user.Bio,
+                    AccountIsEnabled = user.AccountIsEnabled,
+                    AccountIsHidden = user.AccountIsHidden,
+                    AccountIsPrivate = user.AccountIsPrivate,
+                    LikesArePrivate = user.LikesArePrivate,
+                    FollowsArePrivate = user.FollowsArePrivate,
+                    RoleId = user.RoleId,
+                    CreatedAt = user.CreatedAt
+                });
+            }
+
+            return Ok(userDtos);
         }
 
         //Post req to create a post
@@ -236,20 +258,97 @@ namespace Simple_Stocks.Controllers
             return Ok();
         }
 
+        //Post req to like a post
+        [HttpPost("i/{postId}/like")]
+        public async Task<IActionResult> LikePost(int postId)
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var userLiking = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (userLiking == null)
+            {
+                return StatusCode(404, new { messages = new List<string>() { "User not found" } });
+            }
+
+            var postLiked = await _postRepo.GetPostById(postId);
+
+            if (postLiked == null)
+            {
+                return StatusCode(404, new { messages = new List<string>() { "Post not found" } });
+            }
+
+            var postLike = new LikedPost
+            {
+                PostId = postId,
+                UserId = userLiking.Id
+            };
+
+            if (postLike == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { "Error Liking" } });
+            }
+
+            await _likedPostRepo.LikePost(postLike);
+
+            return Ok();
+        }
+
+        //Delete req to unlike a post
+        [HttpDelete("i/{postId}/unlike")]
+        public async Task<IActionResult> UnlikePost(int postId)
+        {
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var userUnliking = await _userRepo.GetUserByUsername(tokenUser);
+
+            if (userUnliking == null)
+            {
+                return StatusCode(404, new { messages = new List<string>() { "User not found" } });
+            }
+
+            var postUnliked = await _postRepo.GetPostById(postId);
+
+            if (postUnliked == null)
+            {
+                return StatusCode(404, new { messages = new List<string>() { "Post not found" } });
+            }
+
+            var postLike = await _likedPostRepo.SearchByUserAndPostIds(userUnliking.Id, postId);
+
+            if (postLike == null)
+            {
+                return StatusCode(400, new { messages = new List<string>() { "Error unliking" } });
+            }
+
+            await _likedPostRepo.DeleteLikedPost(postLike);
+
+            return Ok();
+        }
+
         //Delete req to remove a post
         [HttpDelete("i/{id}")]
         public async Task<IActionResult> DeletePostById(int id)
         {
             var desiredPost = await _postRepo.GetPostById(id);
 
-            //delete post likes too
-            ICollection<PostTag> postTags = await _postTagRepo.SearchByPostId(id);
-            ICollection<Comment> comments = await _postRepo.GetAllCommentsOfPost(id);
-
             if (desiredPost == null)
             {
                 return NotFound();
             }
+
+            var tokenUser = _refreshTokenRepo.ReadToken();
+            
+            var postAuthor = await _userRepo.GetUserById(desiredPost.UserID);
+
+            if (postAuthor.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            //delete post likes too
+            ICollection<PostTag> postTags = await _postTagRepo.SearchByPostId(id);
+            ICollection<Comment> comments = await _postRepo.GetAllCommentsOfPost(id);            
 
             foreach (Comment comment in comments)
             {
@@ -275,6 +374,15 @@ namespace Simple_Stocks.Controllers
             if (postInDb == null)
             {
                 return NotFound();
+            }
+
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var postAuthor = await _userRepo.GetUserById(postInDb.UserID);
+
+            if (postAuthor.Username != tokenUser)
+            {
+                return StatusCode(403);
             }
 
             var updatedPost = _mapper.Map<PostUpdateDto>(postInDb);
@@ -320,6 +428,15 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(400, new { messages = new List<string>() { "Error adding tag" } });
             }
 
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var postAuthor = await _userRepo.GetUserById(post.UserID);
+
+            if (postAuthor.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
             await _postTagRepo.AddPostTag(postTag);
 
             return NoContent();
@@ -348,6 +465,15 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(404, new { messages = new List<string>() { "New tag was not found." } });
             }
 
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var postAuthor = await _userRepo.GetUserById(post.UserID);
+
+            if (postAuthor.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
             postTagToChange.TagId = newTagId;
 
             await _postTagRepo.UpdatePostTag(postTagToChange);
@@ -372,13 +498,22 @@ namespace Simple_Stocks.Controllers
                 return StatusCode(404, new { messages = new List<string>() { "Tag was not found." } });
             }
 
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var postAuthor = await _userRepo.GetUserById(post.UserID);
+
+            if (postAuthor.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
             await _postTagRepo.DeletePostTag(tagToDelete);
 
             return NoContent();
         }
 
         //Patch req for post moderation
-        [HttpPatch("i/{id}/hide")]
+        [HttpPatch("i/{id}/hide"), Authorize(Roles = "Mod,Admin")]
         public async Task<IActionResult> HidePost(int id, [FromBody] JsonPatchDocument<PostVisabilityDto> patchPassedIn)
         {
             var postInDb = await _postRepo.GetPostById(id);
@@ -413,6 +548,15 @@ namespace Simple_Stocks.Controllers
             if (postInDb == null)
             {
                 return NotFound();
+            }
+
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            var postAuthor = await _userRepo.GetUserById(postInDb.UserID);
+
+            if (postAuthor.Username != tokenUser)
+            {
+                return StatusCode(403);
             }
 
             var updatedPost = _mapper.Map<PostPrivacyDto>(postInDb);

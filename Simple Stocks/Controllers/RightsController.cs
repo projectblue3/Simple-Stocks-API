@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
@@ -6,10 +7,11 @@ using Simple_Stocks.Dtos;
 using Simple_Stocks.Models;
 using Simple_Stocks.Services;
 using System.Collections.Generic;
+using System.Data;
 
 namespace Simple_Stocks.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]"), Authorize(Roles = "Admin")]
     [ApiController]
     public class RightsController : ControllerBase
     {

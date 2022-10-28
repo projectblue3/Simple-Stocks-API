@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ using System.Collections.Generic;
 
 namespace Simple_Stocks.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]"), Authorize]
     [ApiController]
     public class TagsController : ControllerBase
     {
@@ -119,7 +120,7 @@ namespace Simple_Stocks.Controllers
         }
 
         //Delete req to delete a tag
-        [HttpDelete("i/{id}")]
+        [HttpDelete("i/{id}"), Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteTagById(int id)
         {
             var desiredTag = await _tagRepo.GetTagById(id);
@@ -142,7 +143,7 @@ namespace Simple_Stocks.Controllers
         }
 
         //Patch req to edit a tag
-        [HttpPatch("i/{id}")]
+        [HttpPatch("i/{id}"), Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateTagById(int id, [FromBody] JsonPatchDocument<TagUpdateDto> patchPassedIn)
         {
             var tagInDb = await _tagRepo.GetTagById(id);
