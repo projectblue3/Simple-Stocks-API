@@ -935,6 +935,8 @@ namespace Simple_Stocks.Controllers
         //add blocked users to get req
         //user feed
         //main page posts vs mod page posts
-        //like, follow, block routes (may require jwt)
+        //refresh token route
+        //exception handler
+        //get my media route
     }
 }
