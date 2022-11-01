@@ -72,8 +72,7 @@ namespace Simple_Stocks.Models
 
         public DateTimeOffset CreatedAt { get; set; }
 
-        //1:1
-        public virtual RefreshToken? RefreshToken { get; set; }
+        public string RefreshToken { get; set; } = String.Empty;
 
         //1:n
         public virtual ICollection<Post>? Posts { get; set; }

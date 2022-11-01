@@ -7,6 +7,10 @@ namespace Simple_Stocks.Dtos
 {
     public class RegisterDto
     {
+        public string AvatarLink { get; set; } = string.Empty;
+
+        public string BannerLink { get; set; } = string.Empty;
+
         [Required]
         [StringLength(50)]
         public string FirstName { get; set; } = string.Empty;

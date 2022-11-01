@@ -11,6 +11,7 @@ namespace Simple_Stocks.Services
         Task<User> GetUserByEmail(string email);
         Task<User> GetUserByPhone(string phone);
         Task<User> GetUserByRealName(string firstName, string lastName);
+        Task<User> GetUserByToken(string refreshToken);
         Task<ICollection<Post>> GetAllPosts(int id);
         Task<ICollection<Post>> GetPersonalPosts(int id);
         Task<ICollection<Post>> GetAllLikedPosts(int id);

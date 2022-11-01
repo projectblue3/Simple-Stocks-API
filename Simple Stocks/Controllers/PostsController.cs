@@ -234,8 +234,6 @@ namespace Simple_Stocks.Controllers
             Post postToCreate = new Post()
             {
                 Title = postPassedIn.Title,
-                MediaLink = "let a function handle this",
-                MediaType = "let a function handle this",
                 Text = postPassedIn.Text,
                 PostIsHidden = false,
                 PostIsPrivate = postPassedIn.PostIsPrivate,

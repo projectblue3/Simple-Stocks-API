@@ -13,6 +13,7 @@ using Simple_Stocks.Migrations;
 using Simple_Stocks.Models;
 using Simple_Stocks.Services;
 using System.Collections.Generic;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Runtime.Intrinsics.Arm;
 using System.Security.Claims;
@@ -474,10 +475,13 @@ namespace Simple_Stocks.Controllers
 
             CreatePasswordHash(userPassedIn.Password, out byte[] passwordHash, out byte[] passwordSalt);
 
+            var jwt = CreateJWT(userPassedIn.Username, userRole.Title, "token");
+            var rjwt = CreateJWT(userPassedIn.Username, userRole.Title, "refreshToken");
+
             User userToCreate = new User()
             {
-                AvatarLink = "test/test.png",
-                BannerLink = "test/test.png",
+                AvatarLink = userPassedIn.AvatarLink,
+                BannerLink = userPassedIn.BannerLink,
                 FirstName = userPassedIn.FirstName,
                 LastName = userPassedIn.LastName,
                 Username = userPassedIn.Username,
@@ -494,7 +498,8 @@ namespace Simple_Stocks.Controllers
                 LikesArePrivate = false,
                 FollowsArePrivate = false,
                 RoleId = userPassedIn.RoleId,
-                CreatedAt = DateTimeOffset.Now
+                CreatedAt = DateTimeOffset.Now,
+                RefreshToken = rjwt
             };
 
             if (userToCreate == null)
@@ -509,7 +514,7 @@ namespace Simple_Stocks.Controllers
 
             await _userRepo.AddUser(userToCreate);
 
-            return Ok();
+            return StatusCode(200, new { token = jwt, refreshToken = rjwt });
             //return CreatedAtRoute(nameof(GetUserById), new { userId = userToCreate.Id }, userToCreate);
         }
 
@@ -534,17 +539,9 @@ namespace Simple_Stocks.Controllers
             var jwt = CreateJWT(user.Username, role.Title, "token");
             var rjwt = CreateJWT(user.Username, role.Title, "refreshToken");
 
-            //check if refresh token exists already
+            user.RefreshToken = rjwt;
 
-            //RefreshToken refreshToken = new RefreshToken()
-            //{
-            //    Token = rjwt,
-            //    CreatedAt = DateTimeOffset.Now,
-            //    ExpiresAt = DateTimeOffset.Now.AddDays(7),
-            //    UserID = user.Id
-            //};
-
-            //await _refreshTokenRepo.AddToken(refreshToken);
+            await _userRepo.UpdateUserAsync(user);
 
             return StatusCode(200, new { token = jwt, refreshToken = rjwt });
         }
@@ -709,12 +706,7 @@ namespace Simple_Stocks.Controllers
         [HttpDelete("logout")]
         public async Task<IActionResult> Logout()
         {
-            var tokenUser = _refreshTokenRepo.ReadToken();
-
-            if (tokenUser == null)
-            {
-                return NotFound();
-            }
+            var tokenUser = _refreshTokenRepo.ReadToken();            
 
             var user = await _userRepo.GetUserByUsername(tokenUser);
 
@@ -723,7 +715,9 @@ namespace Simple_Stocks.Controllers
                 return NotFound();
             }
 
-            //remove refresh token from db
+            user.RefreshToken = String.Empty;
+
+            await _userRepo.UpdateUserAsync(user);
 
             return NoContent();
         }
@@ -743,6 +737,31 @@ namespace Simple_Stocks.Controllers
             await _userRepo.DeleteUserAsync(desiredUser);
 
             return NoContent();
+        }
+
+        //Put req to update a user's jwt
+        [HttpPut("u/{username}/refresh"), AllowAnonymous]
+        public async Task<IActionResult> RefreshJwt(string username)
+        {
+            string rjwt = Request.Headers["RefreshToken"];
+
+            if (rjwt == null)
+            {
+                return StatusCode(404, new { messages = new List<string>() { $"Refresh token not found" } });
+            }
+
+            var user = await _userRepo.GetUserByToken(rjwt);
+
+            if (username != user.Username)
+            {
+                return StatusCode(403);
+            }
+
+            Role role = await _roleRepo.GetRoleById(user.RoleId);
+
+            var newJwt = CreateJWT(user.Username, role.Title, "token");
+
+            return StatusCode(200, new { token = newJwt });
         }
 
         //Patch req to update user's real name, username, and bio
@@ -935,7 +954,6 @@ namespace Simple_Stocks.Controllers
         //add blocked users to get req
         //user feed
         //main page posts vs mod page posts
-        //refresh token route
         //exception handler
         //get my media route
     }
