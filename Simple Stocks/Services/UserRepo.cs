@@ -55,6 +55,27 @@ namespace Simple_Stocks.Services
             return await _dbContext.Set<UserFollow>().Where(uf => uf.FollowedUser.Id == id).Select(uf => uf.SourceUser).AsNoTracking().ToListAsync();
         }
 
+        public async Task<ICollection<Post>> GetUserFeed(int id)
+        {
+            ICollection<User> users = await _dbContext.Set<UserFollow>().Where(uf => uf.SourceUser.Id == id).Select(uf => uf.FollowedUser).AsNoTracking().ToListAsync();
+
+            ICollection<Post> feed = new List<Post>();
+
+            foreach(User user in users)
+            {
+                ICollection<Post> userPosts = await _dbContext.Set<Post>().Where(p => p.UserID == user.Id).AsNoTracking().ToListAsync();
+
+                foreach(Post post in userPosts)
+                {
+                    feed.Add(post);
+                }
+
+                userPosts.Clear();
+            }
+
+            return feed;
+        }
+
         public async Task<ICollection<Post>> GetAllLikedPosts(int id)
         {
             return await _dbContext.Set<LikedPost>().Where(lp => lp.User.Id == id).Select(lp => lp.Post).AsNoTracking().ToListAsync();

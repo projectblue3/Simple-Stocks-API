@@ -401,6 +401,35 @@ namespace Simple_Stocks.Controllers
             return Ok(userDtos);
         }
 
+        //Get req to access user feed
+        [HttpGet("i/{id}/feed")]
+        public async Task<IActionResult> GetFeed(int id)
+        {
+            var desiredUser = await _userRepo.GetUserById(id);
+
+            var tokenUser = _refreshTokenRepo.ReadToken();
+
+            if (desiredUser == null)
+            {
+                return NotFound();
+            }
+
+            if (desiredUser.Username != tokenUser)
+            {
+                return StatusCode(403);
+            }
+
+            ICollection<Post> feed = await _userRepo.GetUserFeed(id);
+
+            if (feed.Count == 0)
+            {
+                List<string> noItems = new List<string>();
+                return Ok(noItems);
+            }
+
+            return Ok(feed);
+        }
+
         //GET req for liked posts
         [HttpGet("i/{id}/likedposts")]
         public async Task<IActionResult> GetLikes(int id)
@@ -739,8 +768,8 @@ namespace Simple_Stocks.Controllers
             return NoContent();
         }
 
-        //Put req to update a user's jwt
-        [HttpPut("u/{username}/refresh"), AllowAnonymous]
+        //Post req to update a user's jwt
+        [HttpPost("u/{username}/refresh"), AllowAnonymous]
         public async Task<IActionResult> RefreshJwt(string username)
         {
             string rjwt = Request.Headers["RefreshToken"];
