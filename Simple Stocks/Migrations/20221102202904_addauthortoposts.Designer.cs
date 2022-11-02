@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Simple_Stocks.Services;
 
@@ -11,9 +12,10 @@ using Simple_Stocks.Services;
 namespace Simple_Stocks.Migrations
 {
     [DbContext(typeof(StocksDbContext))]
-    partial class StocksDbContextModelSnapshot : ModelSnapshot
+    [Migration("20221102202904_addauthortoposts")]
+    partial class addauthortoposts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

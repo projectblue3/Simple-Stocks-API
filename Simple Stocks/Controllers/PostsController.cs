@@ -238,6 +238,7 @@ namespace Simple_Stocks.Controllers
                 PostIsHidden = false,
                 PostIsPrivate = postPassedIn.PostIsPrivate,
                 UserID = userFound.Id,
+                Author = userFound.Username,
                 CreatedAt = DateTimeOffset.Now
             };
 

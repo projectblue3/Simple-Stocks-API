@@ -40,6 +40,8 @@ namespace Simple_Stocks.Models
         //n:1
         [ForeignKey("User")]
         public int UserID { get; set; }
+
+        public string Author { get; set; } = string.Empty;
         public virtual User? User { get; set; }
     }
 }

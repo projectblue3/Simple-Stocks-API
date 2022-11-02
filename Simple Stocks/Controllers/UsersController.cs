@@ -981,8 +981,6 @@ namespace Simple_Stocks.Controllers
         }
 
         //add blocked users to get req
-        //user feed
-        //main page posts vs mod page posts
         //exception handler
         //get my media route
     }
