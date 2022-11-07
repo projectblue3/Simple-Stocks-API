@@ -979,9 +979,5 @@ namespace Simple_Stocks.Controllers
 
             return jwt;
         }
-
-        //add blocked users to get req
-        //exception handler
-        //get my media route
     }
 }

@@ -29,6 +29,15 @@ builder.Services.AddMvc()
                             new CamelCasePropertyNamesContractResolver();
                     });
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(builder =>
+    {
+        //open, not safe
+        builder.WithOrigins("*");
+    });
+});
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -81,6 +90,8 @@ app.UseStaticFiles(new StaticFileOptions
     FileProvider = new PhysicalFileProvider(Path.Combine(Directory.GetCurrentDirectory(), @"Media")),
     RequestPath = new PathString("/Media")
 });
+
+app.UseCors();
 
 app.UseAuthentication();
 
