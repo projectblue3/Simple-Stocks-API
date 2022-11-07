@@ -21,7 +21,7 @@ namespace Simple_Stocks.Dtos
 
         [Required]
         [StringLength(50)]
-        //regex username for no spaces
+        [RegularExpression(@"^[\S]*$", ErrorMessage = "Username cannot contain whitespace")]
         public string Username { get; set; } = string.Empty;
 
         [Required]
