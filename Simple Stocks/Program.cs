@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
 using Simple_Stocks.Services;
 using System.Text;
+using static System.Net.Mime.MediaTypeNames;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -84,6 +85,21 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+app.UseExceptionHandler(exceptionHandlerApp =>
+
+{
+    exceptionHandlerApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+        // using static System.Net.Mime.MediaTypeNames;
+        context.Response.ContentType = Text.Plain;
+
+        await context.Response.WriteAsync("Server Error");
+    });
+
+});
 
 app.MapControllers();
 
