@@ -1,6 +1,8 @@
 # Simple Stocks API
 API for a social media network based on the stock market. Built with ASP.Net, Entity Framework, and SQL
 
+Deployment: https://simplestocks20230218113154.azurewebsites.net/
+
 Technologies Used: -C# -.NET 6.0 -Entity Framework -SQL Database -Automapper -JWT
 
 Build with npm
